@@ -263,12 +263,21 @@ valid_audio_transforms = torchaudio.transforms.MelSpectrogram()
 
 text_transform = TextTransform()
 
-def data_processing(data, data_type="train"):
+def data_processing(data, data_type):
     spectrograms = []
     labels = []
     input_lengths = []
     label_lengths = []
-    for (waveform, _, utterance, _, _, _) in data:
+    for (waveform, _, utterance, _, _) in data:
+        # print(utters)
+        # utterance = ""
+        # for i in utters:
+        #     if i == 1:
+        #       word = "yes"
+        #     else:
+        #       word = "no"
+        #     utterance = utterance + word
+        # print(utterance)
         if data_type == 'train':
             spec = train_audio_transforms(waveform).squeeze(0).transpose(0, 1)
         elif data_type == 'valid':
@@ -286,6 +295,36 @@ def data_processing(data, data_type="train"):
 
     return spectrograms, labels, input_lengths, label_lengths
 
+def data_processing2(data, data_type):
+    spectrograms = []
+    labels = []
+    input_lengths = []
+    label_lengths = []
+    for (waveform, _, utters) in data:
+        utterance = ""
+        for i in utters:
+            if i == 1:
+              word = "yes"
+            else:
+              word = "no"
+            utterance = utterance + word + " "
+        # print(utterance)
+        if data_type == 'train':
+            spec = train_audio_transforms(waveform).squeeze(0).transpose(0, 1)
+        elif data_type == 'valid':
+            spec = valid_audio_transforms(waveform).squeeze(0).transpose(0, 1)
+        else:
+            raise Exception('data_type should be train or valid')
+        spectrograms.append(spec)
+        label = torch.Tensor(text_transform.text_to_int(utterance.lower()))
+        labels.append(label)
+        input_lengths.append(spec.shape[0]//2)
+        label_lengths.append(len(label))
+
+    spectrograms = nn.utils.rnn.pad_sequence(spectrograms, batch_first=True).unsqueeze(1).transpose(2, 3)
+    labels = nn.utils.rnn.pad_sequence(labels, batch_first=True)
+
+    return spectrograms, labels, input_lengths, label_lengths
 
 def GreedyDecoder(output, labels, label_lengths, blank_label=28, collapse_repeated=True):
 	arg_maxes = torch.argmax(output, dim=2)
@@ -301,6 +340,7 @@ def GreedyDecoder(output, labels, label_lengths, blank_label=28, collapse_repeat
 				decode.append(index.item())
 		decodes.append(text_transform.int_to_text(decode))
 	return decodes, targets
+
 
 
 ################################################################################
@@ -433,6 +473,13 @@ def train(model, device, train_loader, criterion, optimizer, scheduler, epoch, i
             output = F.log_softmax(output, dim=2)
             output = output.transpose(0, 1) # (time, batch, n_class)
 
+            # decoded_preds, decoded_targets = GreedyDecoder(output.transpose(0, 1), labels, label_lengths)
+            # print("decoded_preds")
+            # print(decoded_preds)
+            # print("decoded_targets")
+            # print(decoded_targets)
+
+
             loss = criterion(output, labels, input_lengths, label_lengths)
             loss.backward()
 
@@ -467,6 +514,12 @@ def test(model, device, test_loader, criterion, epoch, iter_meter, experiment):
                 test_loss += loss.item() / len(test_loader)
 
                 decoded_preds, decoded_targets = GreedyDecoder(output.transpose(0, 1), labels, label_lengths)
+                print("decoded_preds")
+                print(decoded_preds[:20])
+                print("decoded_targets")
+                print(decoded_targets[:20])
+
+
                 for j in range(len(decoded_preds)):
                     test_cer.append(cer(decoded_targets[j], decoded_preds[j]))
                     test_wer.append(wer(decoded_targets[j], decoded_preds[j]))
@@ -507,8 +560,21 @@ def main(learning_rate, batch_size, epochs,
     if not os.path.isdir("./data"):
         os.makedirs("./data")
 
-    train_dataset = torchaudio.datasets.LIBRISPEECH("./data", url=train_url, download=True)
-    test_dataset = torchaudio.datasets.LIBRISPEECH("./data", url=test_url, download=True)
+    # train_dataset = torchaudio.datasets.LIBRISPEECH("./data", url=train_url, download=True)
+    # test_dataset = torchaudio.datasets.LIBRISPEECH("./data", url=test_url, download=True)
+    # yesno_url = "http://www.openslr.org/resources/1/waves_yesno.tar.gz"
+
+    # train_dataset = torchaudio.datasets.COMMONVOICE(root="./data", tsv='train.tsv', url='english', download=True)
+    # test_dataset = torchaudio.datasets.COMMONVOICE(root="./data", tsv='test.tsv', url='english', download=True)
+
+    data_set = torchaudio.datasets.SPEECHCOMMANDS(root="./data", url='speech_commands_v0.02', download= True)
+
+    # data_set = torchaudio.datasets.YESNO('./data', download=True)
+    train_dataset, test_dataset =  torch.utils.data.random_split(data_set, [int(np.floor(len(data_set)*0.8)),int(np.ceil(len(data_set)*0.2))])
+    # print(len(yesno_data))
+    # print(int(np.floor(len(yesno_data)*0.8)))
+    # print(int(np.ceil(len(yesno_data)*0.2)))
+
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
     train_loader = data.DataLoader(dataset=train_dataset,
@@ -544,8 +610,11 @@ def main(learning_rate, batch_size, epochs,
 
 
     #saving model
-    torch.save(model, str(epochs)+"epochs.pt")
-    print("model saved.")
+    torch.save(model.state_dict(), "new5e_10batch_20epochs.pt")
+    # model_path = "/content/drive/My Drive/new5e_10batch_20epochs.pt"
+    # torch.save(model.state_dict(), model_path)
+    # print("saved model at:")
+    # print(model_path)
 
 
 comet_api_key = "" # add your api key here

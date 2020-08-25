@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import math
 
+
 ################################################################################
 #The following functions are model classes
 ################################################################################
@@ -376,12 +377,12 @@ def GreedyDecoder(output, label, label_length, blank_label=28, collapse_repeated
 ################################################################################
 if __name__ == '__main__':
     #load model
-    model_path = r"/content/drive/My Drive/torch/new_10epochs.pt"
+    model_path = r"/models/new5e_10batch_1epochs.pt"
 
     #load and pre-process data
     #load paths
-    audio_path = "/content/drive/My Drive/torch/audio/cheese_smile.wav"
-    text_path = "/content/drive/My Drive/torch/texts/cheese_smile.txt"
+    audio_path = "/audio/123happy.wav"
+    text_path = "/texts/123happy.txt"
     textfile = open(text_path, 'r')
     label = textfile.readline()
     waveform, sample_rate = torchaudio.load(audio_path)  # load tensor from file
@@ -415,16 +416,21 @@ if __name__ == '__main__':
     model.eval()
 
     #spectrogram
+    audio_transforms = torchaudio.transforms.MelSpectrogram()
     spec = audio_transforms(waveform).unsqueeze(0).transpose(0, 1)
     input_length = spec.shape[0]//2
     spec = spec.to(device)
 
     #transform data
-    audio_transforms = torchaudio.transforms.MelSpectrogram()
     text_transform = TextTransform()
     label = torch.Tensor(text_transform.text_to_int(label.lower())) #load text from file
     label_length = len(label)
     label = label.to(device)
+
+    # example = spec
+    # traced_script_module = torch.jit.trace(model, spec)
+    # traced_script_module.save("/content/drive/My Drive/PyTorchSummer2020/audio_models/serialized_model.pt")
+    # print("saved serialized model")
 
     #evaluate
     output = model(spec)  # (batch, time, n_class)
